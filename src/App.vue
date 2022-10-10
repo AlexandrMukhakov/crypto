@@ -57,14 +57,14 @@
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer">
             <div class="px-4 py-5 sm:p-6 text-center">
               <dt class="text-sm font-medium text-gray-500 truncate">
-                {{t.name}} - USD
+                {{t.name}} - USD 
               </dt>
               <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{t.price}}
+                {{formatPrice(t.price)}}
               </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
-            <button @click.stop="handeTicker(t, index)"
+            <button @click.stop="handeTicker(t)"
               class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 hover:opacity-20 transition-all focus:outline-none">
               <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="#718096"
                 aria-hidden="true">
@@ -106,6 +106,8 @@
 <script>
 
 
+import { subscrbeToTiker, unsubscriberTiker } from './api.js'
+
 export default {
   name: 'App',
 
@@ -125,19 +127,26 @@ export default {
     const windowData = Object.fromEntries(
       new URL(window.location).searchParams.entries()
     );
-    if (windowData.fillter) {
-      this.fillter = windowData.fillter
-    }
-    if (windowData.page) {
-      this.page = windowData.page
-    }
+
+    const VALID_KEYS = ["filter", "page"];
+
+    VALID_KEYS.forEach(key => {
+      if (windowData[key]) {
+        this[key] = windowData[key];
+      }
+    });
 
     const tikerData = localStorage.getItem('cryptonomicon');
     if (tikerData) {
       this.tikers = JSON.parse(tikerData)
-      this.tikers.forEach(item => {
-        this.subscribeData(item.name);
+      this.tikers.forEach(tiker => {
+        subscrbeToTiker(tiker.name.toUpperCase(), newPrice => {
+          this.updateTicker(tiker.name, newPrice)
+        })
       })
+      
+     
+      setInterval(this.updateTikers, 5000);
     }
     
   },
@@ -173,29 +182,40 @@ export default {
   },
 
   methods: {
-
-    subscribeData(tikerName) {
-      setInterval(async () => {
-        const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${tikerName}&tsyms=USD&api key=a91741ce733f207a909bc1d8ea6c04eb54e31c250d42582184dc416b5151eeb0`)
-        const data = await f.json();
-        this.tikers.find(t => t.name === tikerName).price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2)
-
-        if (this.selectedTiker?.name === tikerName) {
-          this.graph.push(data.USD)
-        }
-
-      }, 5000)
-      this.tiker = "";
+    
+    updateTicker(tikerName, price) {
+      this.tikers
+        .filter(t => t.name === tikerName)
+        .forEach(t => {
+          if (t === this.selectedTiker) {
+            this.graph.push(price);
+          }
+          t.price = price;
+        });
+    },
+  
+    formatPrice(price) {
+      if (price === "-") {
+        return price;
+      } else {
+        return price > 1 ? price.toFixed(2) : price.toPrecision(2);
+      }
     },
   
     add() {
-      const newTicker = {
+      const NewTicker = {
         name: this.tiker,
-        price: "_"
-      }
-      this.tikers.unshift(newTicker);
-      this.subscribeData(newTicker.name);
+        price: "-"
+      };
+
+      this.tikers = [...this.tikers, NewTicker];
+      this.tiker = "";
+      this.fillter = "";
+      subscrbeToTiker(NewTicker.name.toUpperCase(), newPrice =>
+        this.updateTicker(NewTicker.name, newPrice)
+      );
     },
+
 
     select(tiker) {
       this.selectedTiker = tiker
@@ -206,6 +226,7 @@ export default {
       if (this.selectedTiker === removeTick) {
         this.selectedTiker = null
       }
+      unsubscriberTiker(removeTick.name);
     },
 
 
@@ -214,7 +235,7 @@ export default {
   watch: {
 
     tikers(newValue, endValue) {
-      console.log(newValue.length, endValue.length)
+      console.log(newValue === endValue)
       localStorage.setItem('cryptonomicon', JSON.stringify(this.tikers));
     },
 
@@ -231,11 +252,11 @@ export default {
     fillter() {
       this.page = 1;
       window.history.pushState(null, document.title, 
-      `${window.location.pathname}?fillter=${this.fillter}&page=${this.page}`);
+      `${window.location.pathname}?filter=${this.fillter}&page=${this.page}`);
     },
     page () {
       window.history.pushState(null, document.title, 
-      `${window.location.pathname}?fillter=${this.fillter}&page=${this.page}`);
+      `${window.location.pathname}?filter=${this.fillter}&page=${this.page}`);
     }
   }
 
